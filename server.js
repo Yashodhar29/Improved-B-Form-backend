@@ -240,16 +240,16 @@ async function processRouteBlock(route, data, startRow, endRow) {
   const [src, dest] = route.split("_");
   const reverseRoute = `${dest}_${src}`;
   const srcDestData = extractRakeData(data, startRow, endRow, "SRC-DEST");
-  const destSrcData = extractRakeData(data, startRow, endRow, "DEST-SRC");
+  // const destSrcData = extractRakeData(data, startRow, endRow, "DEST-SRC");
 
   await updateRouteTable(route, srcDestData);
-  await updateRouteTable(reverseRoute, destSrcData);
+  // await updateRouteTable(reverseRoute, destSrcData);
 
   return {
     route,
     reverseRoute,
     srcDestCount: srcDestData.length,
-    destSrcCount: destSrcData.length
+    // destSrcCount: destSrcData.length
   };
 }
 
@@ -347,7 +347,7 @@ function extractRakeData(data, startRow, endRow, direction) {
       from: row[config.from] !== undefined ? (row[config.from] || '').toString().trim() : null,
       to: row[config.to] !== undefined ? (row[config.to] || '').toString().trim() : null,
       type: row[config.type] !== undefined ? (row[config.type] || '').toString().trim() : null,
-      isLoaded: cleanYesNo(getFirstValue(config.isLoaded)), // Apply cleanYesNo
+      isLoaded: getFirstValue(config.isLoaded), 
       loco1: loco1 || null,
       loco2: loco2 || null,
       base: getFirstValue(config.base) ? (getFirstValue(config.base) || '').toString().trim() : null,
