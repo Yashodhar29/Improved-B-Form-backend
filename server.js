@@ -469,11 +469,10 @@ async function updateRouteTable(tableName, rakes) {
   if (!rakes.length) return;
 
   try {
-    // Fetch existing rake_ids in order
+    // Fetch existing rows (no ordering, preserves DB insertion sequence)
     const { data: existingRows, error: fetchError } = await supabase
       .from(tableName)
-      .select("*")
-      .order("id", { ascending: true }); // assuming 'id' is auto-increment PK
+      .select("*");
     if (fetchError) throw fetchError;
 
     const existingRakeIds = existingRows.map(r => r.rake_id);
@@ -487,21 +486,13 @@ async function updateRouteTable(tableName, rakes) {
       if (!rakeId) return;
 
       if (existingRakeIds.includes(rakeId)) {
-        // Existing rake → prepare update
-        updates.push({
-          ...rake,
-          rake_id: rakeId
-        });
+        updates.push({ ...rake, rake_id: rakeId });
       } else {
-        // New rake → append
-        inserts.push({
-          ...rake,
-          rake_id: rakeId
-        });
+        inserts.push({ ...rake, rake_id: rakeId });
       }
     });
 
-    // 1️⃣ Upsert updates for existing rake_ids
+    // Upsert existing
     if (updates.length) {
       const { error: upsertError } = await supabase
         .from(tableName)
@@ -509,7 +500,7 @@ async function updateRouteTable(tableName, rakes) {
       if (upsertError) console.error("Upsert error:", upsertError);
     }
 
-    // 2️⃣ Insert new rows at the end (sequence preserved)
+    // Insert new rows at the end
     if (inserts.length) {
       const { error: insertError } = await supabase
         .from(tableName)
@@ -523,6 +514,7 @@ async function updateRouteTable(tableName, rakes) {
     throw error;
   }
 }
+
 
 app.get("/health", (req, res) => {
   res.json({ status: "Server is running" });
