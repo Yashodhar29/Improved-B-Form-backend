@@ -315,6 +315,7 @@ function extractRakeData(data, startRow, endRow, direction) {
       to: 5,         // F
       type: 2,       // C
       isLoaded: 3,   // D
+      name: 6,       // G
       loco: 10,      // K
       base: 12,      // M
       dueDate: 14,   // O
@@ -334,6 +335,7 @@ function extractRakeData(data, startRow, endRow, direction) {
       to: 36,        // AK
       type: 33,      // AH
       isLoaded: 34,  // AI
+      name: 37,      // AL
       loco: 41,      // AP
       base: 43,      // AR
       dueDate: 45,   // AT
@@ -402,7 +404,8 @@ function extractRakeData(data, startRow, endRow, direction) {
       from: row[config.from] !== undefined ? (row[config.from] || '').toString().trim() : null,
       to: row[config.to] !== undefined ? (row[config.to] || '').toString().trim() : null,
       type: row[config.type] !== undefined ? (row[config.type] || '').toString().trim() : null,
-      isLoaded: row[config.isLoaded] !== undefined ? (row[config.isLoaded] || '').toString().trim() : null,
+      isLoaded: cleanYesNo(getFirstValue(config.isLoaded)),
+      name: getFirstValue(config.name) ? (getFirstValue(config.name) || '').toString().trim() : null,
       loco1: loco1 || null,
       loco2: loco2 || null,
       base: getFirstValue(config.base) ? (getFirstValue(config.base) || '').toString().trim() : null,
@@ -532,17 +535,19 @@ async function updateRouteTable(tableName, rakes) {
       const rakeId = rake.rakeId?.trim();
       if (!rakeId) return;
 
+      const parsedWagon = rake.wagon ? parseInt(rake.wagon, 10) : null;
       const record = {
         rake_id: rakeId,
         from_station: rake.from || null,
         to_station: rake.to || null,
         type: rake.type || null,
         isloaded: rake.isLoaded || null,
+        name: rake.name || null,
         loco1: rake.loco1 || null,
         loco2: rake.loco2 || null,
         base: rake.base || null,
         due_date: rake.dueDate || null,
-        wagon: rake.wagon ? parseInt(rake.wagon, 10) : null,
+        wagon: isNaN(parsedWagon) ? null : parsedWagon,
         bpc_stn: rake.bpcStn || null,
         bpc_date: rake.bpcDate || null,
         bpc_type: rake.bpcType || null,
