@@ -175,7 +175,6 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
 
     // Process routes
     const processedRoutes = await processExcelData(data);
-    await applyOverrides();
     res.json({
       success: true,
       message: "Database updated successfully",
