@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import multer from "multer";
 import * as XLSX from "xlsx";
+import jwt from "jsonwebtoken";
 import cookieParser from "cookie-parser";
 import { createClient } from '@supabase/supabase-js';
 import fetch from 'node-fetch';
@@ -79,7 +80,6 @@ function parseDateValue(value) {
     return excelSerialToDate(value);
   }
   if (typeof value === 'string' && value.trim() !== '') {
-    // Normalize separators
     let val = value.trim().replace(/[-.]/g, "/");
     const match = val.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})(?:\s+(\d{1,2}):(\d{2}))?$/);
     if (match) {
@@ -110,7 +110,6 @@ function formatTimeForDB(value) {
 function cleanYesNo(val) {
   if (!val) return null;
   const str = String(val).trim().toUpperCase();
-  // Handle additional cases for "yes" and "no" variations
   if (['Y', 'YES', 'TRUE', '1'].includes(str)) return 'Y';
   if (['N', 'NO', 'FALSE', '0'].includes(str)) return 'N';
   console.warn(`Unexpected isLoaded value: "${val}" (converted to ${str})`); // Debug log
@@ -162,13 +161,12 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
       return res.status(400).json({ success: false, message: "No file uploaded" });
     }
 
-    // Parse Excel file
     const workbook = XLSX.read(req.file.buffer, { type: "buffer", cellDates: false });
     const worksheet = workbook.Sheets[workbook.SheetNames[0]];
     const data = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
 
-    // Process routes
     const processedRoutes = await processExcelData(data);
+    // await applyOverrides(); // Removed as applyOverrides is not defined
     res.json({
       success: true,
       message: "Database updated successfully",
@@ -207,7 +205,7 @@ async function processExcelData(data) {
     const normalizedRoute = normalizeRoute(route);
     if (!allowedTables.includes(normalizedRoute)) {
       console.warn(`Skipping unknown route: ${normalizedRoute} actual route is ${route}`);
-      continue;
+      continue; // Changed return to continue to process all routes
     }
 
     if (normalizedRoute && normalizedRoute !== currentRoute) {
@@ -328,7 +326,6 @@ function extractRakeData(data, startRow, endRow, direction) {
 
     const getFirstValue = (col) => {
       let val = row[col] !== undefined ? row[col] : '';
-      // Log raw isLoaded value for debugging
       if (col === config.isLoaded) {
         console.log(`Raw isLoaded value for rake ${rakeId} (row ${r + 1}, direction ${direction}): "${val}"`);
       }
@@ -350,7 +347,7 @@ function extractRakeData(data, startRow, endRow, direction) {
       from: row[config.from] !== undefined ? (row[config.from] || '').toString().trim() : null,
       to: row[config.to] !== undefined ? (row[config.to] || '').toString().trim() : null,
       type: row[config.type] !== undefined ? (row[config.type] || '').toString().trim() : null,
-      isLoaded: cleanYesNo(getFirstValue(config.isLoaded)),
+      isLoaded: cleanYesNo(getFirstValue(config.isLoaded)), // Apply cleanYesNo
       loco1: loco1 || null,
       loco2: loco2 || null,
       base: getFirstValue(config.base) ? (getFirstValue(config.base) || '').toString().trim() : null,
