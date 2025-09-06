@@ -53,15 +53,10 @@ let supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 async function connectDB() {
   try {
     supabase = await createClient(supabaseUrl, supabaseAnonKey, { global: { fetch } })
-
-    // db = await postgres(connectionString)
   } catch (error) {
     process.exit(1);
   }
 }
-
-
-
 
 // Helper functions
 function excelSerialToDate(serial) {
@@ -86,8 +81,6 @@ function parseDateValue(value) {
   if (typeof value === 'string' && value.trim() !== '') {
     // Normalize separators
     let val = value.trim().replace(/[-.]/g, "/");
-
-    // Match dd/mm/yyyy or dd/mm/yy (optional time)
     const match = val.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})(?:\s+(\d{1,2}):(\d{2}))?$/);
     if (match) {
       let [, d, m, y, h = 0, min = 0] = match;
@@ -99,7 +92,6 @@ function parseDateValue(value) {
   }
   return null;
 }
-
 
 function formatDateForDB(value) {
   const date = parseDateValue(value);
@@ -118,8 +110,10 @@ function formatTimeForDB(value) {
 function cleanYesNo(val) {
   if (!val) return null;
   const str = String(val).trim().toUpperCase();
-  if (str === 'Y' || str === 'YES') return 'Y';
-  if (str === 'N' || str === 'NO') return 'N';
+  // Handle additional cases for "yes" and "no" variations
+  if (['Y', 'YES', 'TRUE', '1'].includes(str)) return 'Y';
+  if (['N', 'NO', 'FALSE', '0'].includes(str)) return 'N';
+  console.warn(`Unexpected isLoaded value: "${val}" (converted to ${str})`); // Debug log
   return null;
 }
 
@@ -128,40 +122,6 @@ const allowedTables = [
   "ltrr_sc", "sc_ltrr", "pune_dd", "dd_pune", "mrj_pune", "pune_mrj",
   "sc_tjsp", "tjsp_sc"
 ];
-
-
-// app.get("/api/fetch-data", async (req, res) => {
-//   const tables = [
-//     "sc_wadi",
-//     "gtl_wadi",
-//     "ubl_hg",
-//     "ltrr_sc",
-//     "mrj_pune",
-//     "pune_dd",
-//     "sc_tjsp",
-//   ];
-
-//   try {
-//     const results = {};
-
-//     for (const table of tables) {
-//       const { data, error } = await supabase.from(table).select("*");
-//       if (error) {
-//         console.error(`Error fetching ${table}:`, error);
-//         results[table] = { error: error.message };
-//         continue; // skip this table but continue with others
-//       }
-//       results[table] = data;
-//     }
-
-//     res.json({ success: true, data: results });
-//   } catch (err) {
-//     res.status(500).json({ success: false, message: err.message });
-//   }
-// });
-
-
-// Process Excel and update database
 
 app.get("/api/fetch-data", async (req, res) => {
   const tables = [
@@ -181,7 +141,7 @@ app.get("/api/fetch-data", async (req, res) => {
       const { data, error } = await supabase
         .from(table)
         .select("*")
-        .order("seq", { ascending: true }); // ✅ order by insertion
+        .order("seq", { ascending: true });
       if (error) {
         console.error(`Error fetching ${table}:`, error);
         results[table] = { error: error.message };
@@ -225,20 +185,15 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
 
 function normalizeRoute(rawRoute) {
   if (!rawRoute || typeof rawRoute !== "string") return "";
-
   rawRoute = rawRoute.trim();
   if (!rawRoute) return "";
-
-  // normalize dash and remove extra spaces
-  const parts = rawRoute.split(/\s*-\s*/); // split on "-" with optional spaces
+  const parts = rawRoute.split(/\s*-\s*/);
   if (parts.length !== 2) {
     return "";
   }
   return parts[0].toLowerCase() + "_" + parts[1].toLowerCase();
 }
 
-
-// Core processing function
 async function processExcelData(data) {
   const ROUTE_COL = 29; // Column AD (0-based index)
   const processedRoutes = [];
@@ -252,13 +207,11 @@ async function processExcelData(data) {
     const normalizedRoute = normalizeRoute(route);
     if (!allowedTables.includes(normalizedRoute)) {
       console.warn(`Skipping unknown route: ${normalizedRoute} actual route is ${route}`);
-      return;
+      continue;
     }
 
-    // New route block detected
     if (normalizedRoute && normalizedRoute !== currentRoute) {
       if (currentRoute) {
-        // Process previous block
         const result = await processRouteBlock(
           currentRoute,
           data,
@@ -272,7 +225,6 @@ async function processExcelData(data) {
     }
   }
 
-  // Process last route block
   if (currentRoute) {
     const result = await processRouteBlock(
       currentRoute,
@@ -286,16 +238,12 @@ async function processExcelData(data) {
   return processedRoutes;
 }
 
-// Process a single route block
 async function processRouteBlock(route, data, startRow, endRow) {
   const [src, dest] = route.split("_");
   const reverseRoute = `${dest}_${src}`;
-  // Extract data for both directions
   const srcDestData = extractRakeData(data, startRow, endRow, "SRC-DEST");
   const destSrcData = extractRakeData(data, startRow, endRow, "DEST-SRC");
 
-
-  // Update database
   await updateRouteTable(route, srcDestData);
   await updateRouteTable(reverseRoute, destSrcData);
 
@@ -306,7 +254,7 @@ async function processRouteBlock(route, data, startRow, endRow) {
     destSrcCount: destSrcData.length
   };
 }
-// Extract rake data with all columns
+
 function extractRakeData(data, startRow, endRow, direction) {
   const config = direction === "SRC-DEST"
     ? {
@@ -315,7 +263,6 @@ function extractRakeData(data, startRow, endRow, direction) {
       to: 5,         // F
       type: 2,       // C
       isLoaded: 3,   // D
-      name: 6,       // G
       loco: 10,      // K
       base: 12,      // M
       dueDate: 14,   // O
@@ -335,7 +282,6 @@ function extractRakeData(data, startRow, endRow, direction) {
       to: 36,        // AK
       type: 33,      // AH
       isLoaded: 34,  // AI
-      name: 37,      // AL
       loco: 41,      // AP
       base: 43,      // AR
       dueDate: 45,   // AT
@@ -358,22 +304,17 @@ function extractRakeData(data, startRow, endRow, direction) {
     const nextRow = r + 1 <= endRow ? (data[r + 1] || []) : [];
 
     const rakeId = row[config.rakeId] !== undefined ? (row[config.rakeId] || '').toString().trim() : '';
-
-    // Skip empty rake IDs
     if (!rakeId) {
       r++;
       continue;
     }
 
-    // Check if next row has no rake ID (potential second loco)
     const nextRakeId = nextRow[config.rakeId] !== undefined ? (nextRow[config.rakeId] || '').toString().trim() : '';
     let hasSecondLoco = nextRakeId === '' && r + 1 <= endRow;
 
-    // Extract loco numbers
     const loco1 = row[config.loco] !== undefined ? (row[config.loco] || '').toString().trim() : '';
     const loco2 = hasSecondLoco ? (nextRow[config.loco] !== undefined ? (nextRow[config.loco] || '').toString().trim() : '') : '';
 
-    // Check for more than 2 loco numbers
     const allLocos = [loco1, loco2]
       .filter(Boolean)
       .join(',')
@@ -385,27 +326,31 @@ function extractRakeData(data, startRow, endRow, direction) {
       continue;
     }
 
-    // Get first non-empty value for fields that might have duplicates
     const getFirstValue = (col) => {
       let val = row[col] !== undefined ? row[col] : '';
+      // Log raw isLoaded value for debugging
+      if (col === config.isLoaded) {
+        console.log(`Raw isLoaded value for rake ${rakeId} (row ${r + 1}, direction ${direction}): "${val}"`);
+      }
       if (val !== '' && val !== null) return val;
 
       if (hasSecondLoco) {
         val = nextRow[col] !== undefined ? nextRow[col] : '';
+        if (col === config.isLoaded) {
+          console.log(`Raw isLoaded value for rake ${rakeId} (next row ${r + 2}, direction ${direction}): "${val}"`);
+        }
         if (val !== '' && val !== null) return val;
       }
 
       return null;
     };
 
-    // Create rake object
     const rake = {
       rakeId: rakeId,
       from: row[config.from] !== undefined ? (row[config.from] || '').toString().trim() : null,
       to: row[config.to] !== undefined ? (row[config.to] || '').toString().trim() : null,
       type: row[config.type] !== undefined ? (row[config.type] || '').toString().trim() : null,
       isLoaded: cleanYesNo(getFirstValue(config.isLoaded)),
-      name: getFirstValue(config.name) ? (getFirstValue(config.name) || '').toString().trim() : null,
       loco1: loco1 || null,
       loco2: loco2 || null,
       base: getFirstValue(config.base) ? (getFirstValue(config.base) || '').toString().trim() : null,
@@ -422,85 +367,11 @@ function extractRakeData(data, startRow, endRow, direction) {
     };
 
     rakes.push(rake);
-
-    // Move to next row
     r += hasSecondLoco ? 2 : 1;
   }
 
   return rakes;
 }
-
-
-// Update database table
-// async function updateRouteTable(tableName, rakes) {
-//   if (!rakes.length) return;
-
-//   try {
-//     // 🚨 Clear the table before inserting new data
-//     const { error: truncateError } = await supabase
-//       .from(tableName)
-//       .delete()
-//       .neq('rake_id', 0); // Delete all records (assuming 'id' exists)
-
-//     if (truncateError) throw truncateError;
-
-//     // Prepare data for insertion
-//     const records = rakes.map(rake => ({
-//       "rake_id": rake.rakeId ? rake.rakeId.trim() : null,
-//       "from_station": rake.from,
-//       "to_station": rake.to,
-//       "type": rake.type,
-//       "isloaded": rake.isLoaded,
-//       "loco1": rake.loco1,
-//       "loco2": rake.loco2,
-//       "base": rake.base,
-//       "due_date": rake.dueDate,
-//       "wagon": rake.wagon ? parseInt(rake.wagon, 10) : null, // Ensure integer
-//       "bpc_stn": rake.bpcStn,
-//       "bpc_date": rake.bpcDate,
-//       "bpc_type": rake.bpcType,
-//       "arrival": rake.arrival,
-//       "stts": rake.stts,
-//       "loc": rake.loc,
-//       "ic": rake.ic,
-//       "fc": rake.fc
-//     }));
-
-//     function dedupeBatch(batch, key = "rake_id") {
-//       const seen = new Set();
-//       return batch.filter(item => {
-//         if (seen.has(item[key])) return false;
-//         seen.add(item[key]);
-//         return true;
-//       });
-//     }
-
-//     // Insert in batches (Supabase has a limit per request)
-//     const BATCH_SIZE = 100;
-//     let insertedCount = 0;
-
-//     for (let i = 0; i < records.length; i += BATCH_SIZE) {
-//       const batch = records.slice(i, i + BATCH_SIZE);
-//       const uniqueBatch = dedupeBatch(batch);
-
-//       const { data, error } = await supabase
-//         .from(tableName)
-//         .upsert(uniqueBatch, { onConflict: ['rake_id'] });
-
-//       if (error) {
-//         console.error(`Insert error for table ${tableName}:`, error.message, error.details || "");
-//       }
-
-//       insertedCount += batch.length;
-//     }
-
-
-//     return insertedCount;
-
-//   } catch (error) {
-//   }
-// }
-// Update database table while preserving rake_id sequence and handling nulls
 
 function dedupeRakesById(rakes) {
   const seen = new Set();
@@ -516,18 +387,13 @@ async function updateRouteTable(tableName, rakes) {
   if (!rakes.length) return;
 
   try {
-    // Deduplicate rakes within the batch first
     rakes = dedupeRakesById(rakes);
-
-    // Fetch existing rows to know which rake_ids already exist
     const { data: existingRows, error: fetchError } = await supabase
       .from(tableName)
       .select("rake_id");
     if (fetchError) throw fetchError;
 
     const existingRakeIds = existingRows.map(r => r.rake_id);
-
-    // Separate new and existing rakes
     const updates = [];
     const inserts = [];
 
@@ -564,7 +430,6 @@ async function updateRouteTable(tableName, rakes) {
       }
     });
 
-    // Upsert existing records
     if (updates.length) {
       const { error: upsertError } = await supabase
         .from(tableName)
@@ -572,7 +437,6 @@ async function updateRouteTable(tableName, rakes) {
       if (upsertError) console.error(`Upsert error for ${tableName}:`, upsertError);
     }
 
-    // Insert new rows
     if (inserts.length) {
       const { error: insertError } = await supabase
         .from(tableName)
@@ -588,13 +452,9 @@ async function updateRouteTable(tableName, rakes) {
   }
 }
 
-
-
 app.get("/health", (req, res) => {
   res.json({ status: "Server is running" });
 });
-
-
 
 async function startServer() {
   await connectDB();
