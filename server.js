@@ -1094,6 +1094,28 @@ app.get("/api/clear-all-data", async (req, res) => {
   }
 });
 
+app.get("/api/fetch-data", async (req, res) => {
+  const tables = [
+    "sc_wadi",
+    "gtl_wadi",
+    "ubl_hg",
+    "ltrr_lur",
+    "mrj_pune",
+    "pune_dd",
+    "sc_tjsp",
+  ];
+  try {
+    const results = {};
+    for (const table of tables) {
+      const { rows } = await pool.query(`SELECT * FROM ${table}`);
+      results[table] = rows;
+    }
+    res.json({ success: true, data: results });
+  } catch (err) {
+    console.error("Fetch error:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
 
 // Process Excel and update database
 app.post("/api/upload", upload.single("file"), async (req, res) => {
