@@ -463,15 +463,15 @@ function extractRakeData(data, startRow, endRow, direction) {
 //   } catch (error) {
 //   }
 // }
-// Update database table while preserving rake_id sequence
+// Update database table while preserving rake_id sequence and handling nulls
 async function updateRouteTable(tableName, rakes) {
   if (!rakes.length) return;
 
   try {
-    // Fetch existing rows (no ordering, preserves DB insertion sequence)
+    // Fetch existing rows to know which rake_ids already exist
     const { data: existingRows, error: fetchError } = await supabase
       .from(tableName)
-      .select("*");
+      .select("rake_id");
     if (fetchError) throw fetchError;
 
     const existingRakeIds = existingRows.map(r => r.rake_id);
@@ -484,35 +484,58 @@ async function updateRouteTable(tableName, rakes) {
       const rakeId = rake.rakeId?.trim();
       if (!rakeId) return;
 
+      const record = {
+        rake_id: rakeId,
+        from_station: rake.from || null,
+        to_station: rake.to || null,
+        type: rake.type || null,
+        isloaded: rake.isLoaded || null,
+        loco1: rake.loco1 || null,
+        loco2: rake.loco2 || null,
+        base: rake.base || null,
+        due_date: rake.dueDate || null,
+        wagon: rake.wagon ? parseInt(rake.wagon, 10) : null,
+        bpc_stn: rake.bpcStn || null,
+        bpc_date: rake.bpcDate || null,
+        bpc_type: rake.bpcType || null,
+        arrival: rake.arrival || null,
+        stts: rake.stts || null,
+        loc: rake.loc || null,
+        ic: rake.ic || null,
+        fc: rake.fc || null
+      };
+
       if (existingRakeIds.includes(rakeId)) {
-        updates.push({ ...rake, rake_id: rakeId });
+        updates.push(record);
       } else {
-        inserts.push({ ...rake, rake_id: rakeId });
+        inserts.push(record);
       }
     });
 
-    // Upsert existing
+    // Upsert existing records
     if (updates.length) {
       const { error: upsertError } = await supabase
         .from(tableName)
         .upsert(updates, { onConflict: ["rake_id"] });
-      if (upsertError) console.error("Upsert error:", upsertError);
+      if (upsertError) console.error(`Upsert error for ${tableName}:`, upsertError);
     }
 
-    // Insert new rows at the end
+    // Insert new rows
     if (inserts.length) {
       const { error: insertError } = await supabase
         .from(tableName)
         .insert(inserts);
-      if (insertError) console.error("Insert error:", insertError);
+      if (insertError) console.error(`Insert error for ${tableName}:`, insertError);
     }
 
     return { updated: updates.length, inserted: inserts.length };
+
   } catch (error) {
     console.error("Error updating table", tableName, error);
     throw error;
   }
 }
+
 
 
 app.get("/health", (req, res) => {
