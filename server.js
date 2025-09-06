@@ -542,7 +542,6 @@ async function updateRouteTable(tableName, rakes) {
         to_station: rake.to || null,
         type: rake.type || null,
         isloaded: rake.isLoaded || null,
-        name: rake.name || null,
         loco1: rake.loco1 || null,
         loco2: rake.loco2 || null,
         base: rake.base || null,
