@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import multer from "multer";
 import * as XLSX from "xlsx";
+import jwt from "jsonwebtoken";
 import cookieParser from "cookie-parser";
 import { createClient } from '@supabase/supabase-js';
 import fetch from 'node-fetch';
@@ -396,131 +397,72 @@ function extractRakeData(data, startRow, endRow, direction) {
 
 
 // Update database table
-// async function updateRouteTable(tableName, rakes) {
-//   if (!rakes.length) return;
-
-//   try {
-//     // 🚨 Clear the table before inserting new data
-//     const { error: truncateError } = await supabase
-//       .from(tableName)
-//       .delete()
-//       .neq('rake_id', 0); // Delete all records (assuming 'id' exists)
-
-//     if (truncateError) throw truncateError;
-
-//     // Prepare data for insertion
-//     const records = rakes.map(rake => ({
-//       "rake_id": rake.rakeId ? rake.rakeId.trim() : null,
-//       "from_station": rake.from,
-//       "to_station": rake.to,
-//       "type": rake.type,
-//       "isloaded": rake.isLoaded,
-//       "loco1": rake.loco1,
-//       "loco2": rake.loco2,
-//       "base": rake.base,
-//       "due_date": rake.dueDate,
-//       "wagon": rake.wagon ? parseInt(rake.wagon, 10) : null, // Ensure integer
-//       "bpc_stn": rake.bpcStn,
-//       "bpc_date": rake.bpcDate,
-//       "bpc_type": rake.bpcType,
-//       "arrival": rake.arrival,
-//       "stts": rake.stts,
-//       "loc": rake.loc,
-//       "ic": rake.ic,
-//       "fc": rake.fc
-//     }));
-
-//     function dedupeBatch(batch, key = "rake_id") {
-//       const seen = new Set();
-//       return batch.filter(item => {
-//         if (seen.has(item[key])) return false;
-//         seen.add(item[key]);
-//         return true;
-//       });
-//     }
-
-//     // Insert in batches (Supabase has a limit per request)
-//     const BATCH_SIZE = 100;
-//     let insertedCount = 0;
-
-//     for (let i = 0; i < records.length; i += BATCH_SIZE) {
-//       const batch = records.slice(i, i + BATCH_SIZE);
-//       const uniqueBatch = dedupeBatch(batch);
-
-//       const { data, error } = await supabase
-//         .from(tableName)
-//         .upsert(uniqueBatch, { onConflict: ['rake_id'] });
-
-//       if (error) {
-//         console.error(`Insert error for table ${tableName}:`, error.message, error.details || "");
-//       }
-
-//       insertedCount += batch.length;
-//     }
-
-
-//     return insertedCount;
-
-//   } catch (error) {
-//   }
-// }
-// Update database table while preserving rake_id sequence
 async function updateRouteTable(tableName, rakes) {
   if (!rakes.length) return;
 
   try {
-    // Fetch existing rake_ids in order
-    const { data: existingRows, error: fetchError } = await supabase
+    // 🚨 Clear the table before inserting new data
+    const { error: truncateError } = await supabase
       .from(tableName)
-      .select("*")
-      .order("id", { ascending: true }); // assuming 'id' is auto-increment PK
-    if (fetchError) throw fetchError;
+      .delete()
+      .neq('rake_id', 0); // Delete all records (assuming 'id' exists)
 
-    const existingRakeIds = existingRows.map(r => r.rake_id);
+    if (truncateError) throw truncateError;
 
-    // Separate new and existing rakes
-    const updates = [];
-    const inserts = [];
+    // Prepare data for insertion
+    const records = rakes.map(rake => ({
+      "rake_id": rake.rakeId ? rake.rakeId.trim() : null,
+      "from_station": rake.from,
+      "to_station": rake.to,
+      "type": rake.type,
+      "isloaded": rake.isLoaded,
+      "loco1": rake.loco1,
+      "loco2": rake.loco2,
+      "base": rake.base,
+      "due_date": rake.dueDate,
+      "wagon": rake.wagon ? parseInt(rake.wagon, 10) : null, // Ensure integer
+      "bpc_stn": rake.bpcStn,
+      "bpc_date": rake.bpcDate,
+      "bpc_type": rake.bpcType,
+      "arrival": rake.arrival,
+      "stts": rake.stts,
+      "loc": rake.loc,
+      "ic": rake.ic,
+      "fc": rake.fc
+    }));
 
-    rakes.forEach(rake => {
-      const rakeId = rake.rakeId?.trim();
-      if (!rakeId) return;
+    function dedupeBatch(batch, key = "rake_id") {
+      const seen = new Set();
+      return batch.filter(item => {
+        if (seen.has(item[key])) return false;
+        seen.add(item[key]);
+        return true;
+      });
+    }
 
-      if (existingRakeIds.includes(rakeId)) {
-        // Existing rake → prepare update
-        updates.push({
-          ...rake,
-          rake_id: rakeId
-        });
-      } else {
-        // New rake → append
-        inserts.push({
-          ...rake,
-          rake_id: rakeId
-        });
+    // Insert in batches (Supabase has a limit per request)
+    const BATCH_SIZE = 100;
+    let insertedCount = 0;
+
+    for (let i = 0; i < records.length; i += BATCH_SIZE) {
+      const batch = records.slice(i, i + BATCH_SIZE);
+      const uniqueBatch = dedupeBatch(batch);
+
+      const { data, error } = await supabase
+        .from(tableName)
+        .upsert(uniqueBatch, { onConflict: ['rake_id'] });
+
+      if (error) {
+        console.error(`Insert error for table ${tableName}:`, error.message, error.details || "");
       }
-    });
 
-    // 1️⃣ Upsert updates for existing rake_ids
-    if (updates.length) {
-      const { error: upsertError } = await supabase
-        .from(tableName)
-        .upsert(updates, { onConflict: ["rake_id"] });
-      if (upsertError) console.error("Upsert error:", upsertError);
+      insertedCount += batch.length;
     }
 
-    // 2️⃣ Insert new rows at the end (sequence preserved)
-    if (inserts.length) {
-      const { error: insertError } = await supabase
-        .from(tableName)
-        .insert(inserts);
-      if (insertError) console.error("Insert error:", insertError);
-    }
 
-    return { updated: updates.length, inserted: inserts.length };
+    return insertedCount;
+
   } catch (error) {
-    console.error("Error updating table", tableName, error);
-    throw error;
   }
 }
 
