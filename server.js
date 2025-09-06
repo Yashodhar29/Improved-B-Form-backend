@@ -1122,7 +1122,7 @@ app.get("/api/fetch-data", async (req, res) => {
     "sc_wadi",
     "gtl_wadi",
     "ubl_hg",
-    "ltrr_lur",
+    "ltrr_sc",
     "mrj_pune",
     "pune_dd",
     "sc_tjsp",
