@@ -464,10 +464,24 @@ function extractRakeData(data, startRow, endRow, direction) {
 //   }
 // }
 // Update database table while preserving rake_id sequence and handling nulls
+
+function dedupeRakesById(rakes) {
+  const seen = new Set();
+  return rakes.filter(r => {
+    const id = r.rakeId?.trim();
+    if (!id || seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+}
+
 async function updateRouteTable(tableName, rakes) {
   if (!rakes.length) return;
 
   try {
+    // Deduplicate rakes within the batch first
+    rakes = dedupeRakesById(rakes);
+
     // Fetch existing rows to know which rake_ids already exist
     const { data: existingRows, error: fetchError } = await supabase
       .from(tableName)
