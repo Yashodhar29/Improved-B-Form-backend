@@ -1,4 +1,3 @@
-import NodeCache from 'node-cache';
 import express from "express";
 import cors from "cors";
 import multer from "multer";
@@ -913,7 +912,6 @@ app.get("/api/ic-fc-stats", async (req, res) => {
     });
   }
 });
-const cache = new NodeCache({ stdTTL: 300 }); // Cache for 5 minutes
 
 app.get("/api/dashboard-stats", async (req, res) => {
   const tables = [
