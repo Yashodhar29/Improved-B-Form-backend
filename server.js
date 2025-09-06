@@ -1107,7 +1107,7 @@ app.get("/api/fetch-data", async (req, res) => {
   try {
     const results = {};
     for (const table of tables) {
-      const { rows } = await pool.query(`SELECT * FROM ${table}`);
+      const { rows } = await supabase.query(`SELECT * FROM ${table}`);
       results[table] = rows;
     }
     res.json({ success: true, data: results });
