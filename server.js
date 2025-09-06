@@ -130,6 +130,39 @@ const allowedTables = [
 ];
 
 
+// app.get("/api/fetch-data", async (req, res) => {
+//   const tables = [
+//     "sc_wadi",
+//     "gtl_wadi",
+//     "ubl_hg",
+//     "ltrr_sc",
+//     "mrj_pune",
+//     "pune_dd",
+//     "sc_tjsp",
+//   ];
+
+//   try {
+//     const results = {};
+
+//     for (const table of tables) {
+//       const { data, error } = await supabase.from(table).select("*");
+//       if (error) {
+//         console.error(`Error fetching ${table}:`, error);
+//         results[table] = { error: error.message };
+//         continue; // skip this table but continue with others
+//       }
+//       results[table] = data;
+//     }
+
+//     res.json({ success: true, data: results });
+//   } catch (err) {
+//     res.status(500).json({ success: false, message: err.message });
+//   }
+// });
+
+
+// Process Excel and update database
+
 app.get("/api/fetch-data", async (req, res) => {
   const tables = [
     "sc_wadi",
@@ -145,11 +178,14 @@ app.get("/api/fetch-data", async (req, res) => {
     const results = {};
 
     for (const table of tables) {
-      const { data, error } = await supabase.from(table).select("*");
+      const { data, error } = await supabase
+        .from(table)
+        .select("*")
+        .order("seq", { ascending: true }); // ✅ order by insertion
       if (error) {
         console.error(`Error fetching ${table}:`, error);
         results[table] = { error: error.message };
-        continue; // skip this table but continue with others
+        continue;
       }
       results[table] = data;
     }
@@ -160,8 +196,6 @@ app.get("/api/fetch-data", async (req, res) => {
   }
 });
 
-
-// Process Excel and update database
 app.post("/api/upload", upload.single("file"), async (req, res) => {
   try {
     if (!req.file) {
