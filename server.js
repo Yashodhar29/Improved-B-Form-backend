@@ -54,10 +54,15 @@ let supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 async function connectDB() {
   try {
     supabase = await createClient(supabaseUrl, supabaseAnonKey, { global: { fetch } })
+
+    // db = await postgres(connectionString)
   } catch (error) {
     process.exit(1);
   }
 }
+
+
+
 
 // Helper functions
 function excelSerialToDate(serial) {
@@ -80,7 +85,10 @@ function parseDateValue(value) {
     return excelSerialToDate(value);
   }
   if (typeof value === 'string' && value.trim() !== '') {
+    // Normalize separators
     let val = value.trim().replace(/[-.]/g, "/");
+
+    // Match dd/mm/yyyy or dd/mm/yy (optional time)
     const match = val.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})(?:\s+(\d{1,2}):(\d{2}))?$/);
     if (match) {
       let [, d, m, y, h = 0, min = 0] = match;
@@ -92,6 +100,7 @@ function parseDateValue(value) {
   }
   return null;
 }
+
 
 function formatDateForDB(value) {
   const date = parseDateValue(value);
@@ -110,9 +119,8 @@ function formatTimeForDB(value) {
 function cleanYesNo(val) {
   if (!val) return null;
   const str = String(val).trim().toUpperCase();
-  if (['Y', 'YES', 'TRUE', '1'].includes(str)) return 'Y';
-  if (['N', 'NO', 'FALSE', '0'].includes(str)) return 'N';
-  console.warn(`Unexpected isLoaded value: "${val}" (converted to ${str})`); // Debug log
+  if (str === 'Y' || str === 'YES') return 'Y';
+  if (str === 'N' || str === 'NO') return 'N';
   return null;
 }
 
@@ -121,6 +129,7 @@ const allowedTables = [
   "ltrr_sc", "sc_ltrr", "pune_dd", "dd_pune", "mrj_pune", "pune_mrj",
   "sc_tjsp", "tjsp_sc"
 ];
+
 
 app.get("/api/fetch-data", async (req, res) => {
   const tables = [
@@ -137,14 +146,11 @@ app.get("/api/fetch-data", async (req, res) => {
     const results = {};
 
     for (const table of tables) {
-      const { data, error } = await supabase
-        .from(table)
-        .select("*")
-        .order("seq", { ascending: true });
+      const { data, error } = await supabase.from(table).select("*");
       if (error) {
         console.error(`Error fetching ${table}:`, error);
         results[table] = { error: error.message };
-        continue;
+        continue; // skip this table but continue with others
       }
       results[table] = data;
     }
@@ -155,18 +161,22 @@ app.get("/api/fetch-data", async (req, res) => {
   }
 });
 
+
+// Process Excel and update database
 app.post("/api/upload", upload.single("file"), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ success: false, message: "No file uploaded" });
     }
 
+    // Parse Excel file
     const workbook = XLSX.read(req.file.buffer, { type: "buffer", cellDates: false });
     const worksheet = workbook.Sheets[workbook.SheetNames[0]];
     const data = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
 
+    // Process routes
     const processedRoutes = await processExcelData(data);
-    // await applyOverrides(); // Removed as applyOverrides is not defined
+    await applyOverrides();
     res.json({
       success: true,
       message: "Database updated successfully",
@@ -183,15 +193,20 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
 
 function normalizeRoute(rawRoute) {
   if (!rawRoute || typeof rawRoute !== "string") return "";
+
   rawRoute = rawRoute.trim();
   if (!rawRoute) return "";
-  const parts = rawRoute.split(/\s*-\s*/);
+
+  // normalize dash and remove extra spaces
+  const parts = rawRoute.split(/\s*-\s*/); // split on "-" with optional spaces
   if (parts.length !== 2) {
     return "";
   }
   return parts[0].toLowerCase() + "_" + parts[1].toLowerCase();
 }
 
+
+// Core processing function
 async function processExcelData(data) {
   const ROUTE_COL = 29; // Column AD (0-based index)
   const processedRoutes = [];
@@ -205,11 +220,13 @@ async function processExcelData(data) {
     const normalizedRoute = normalizeRoute(route);
     if (!allowedTables.includes(normalizedRoute)) {
       console.warn(`Skipping unknown route: ${normalizedRoute} actual route is ${route}`);
-      continue; // Changed return to continue to process all routes
+      return;
     }
 
+    // New route block detected
     if (normalizedRoute && normalizedRoute !== currentRoute) {
       if (currentRoute) {
+        // Process previous block
         const result = await processRouteBlock(
           currentRoute,
           data,
@@ -223,6 +240,7 @@ async function processExcelData(data) {
     }
   }
 
+  // Process last route block
   if (currentRoute) {
     const result = await processRouteBlock(
       currentRoute,
@@ -236,23 +254,27 @@ async function processExcelData(data) {
   return processedRoutes;
 }
 
+// Process a single route block
 async function processRouteBlock(route, data, startRow, endRow) {
   const [src, dest] = route.split("_");
   const reverseRoute = `${dest}_${src}`;
+  // Extract data for both directions
   const srcDestData = extractRakeData(data, startRow, endRow, "SRC-DEST");
-  // const destSrcData = extractRakeData(data, startRow, endRow, "DEST-SRC");
+  const destSrcData = extractRakeData(data, startRow, endRow, "DEST-SRC");
 
+
+  // Update database
   await updateRouteTable(route, srcDestData);
-  // await updateRouteTable(reverseRoute, destSrcData);
+  await updateRouteTable(reverseRoute, destSrcData);
 
   return {
     route,
     reverseRoute,
     srcDestCount: srcDestData.length,
-    // destSrcCount: destSrcData.length
+    destSrcCount: destSrcData.length
   };
 }
-
+// Extract rake data with all columns
 function extractRakeData(data, startRow, endRow, direction) {
   const config = direction === "SRC-DEST"
     ? {
@@ -302,17 +324,22 @@ function extractRakeData(data, startRow, endRow, direction) {
     const nextRow = r + 1 <= endRow ? (data[r + 1] || []) : [];
 
     const rakeId = row[config.rakeId] !== undefined ? (row[config.rakeId] || '').toString().trim() : '';
+
+    // Skip empty rake IDs
     if (!rakeId) {
       r++;
       continue;
     }
 
+    // Check if next row has no rake ID (potential second loco)
     const nextRakeId = nextRow[config.rakeId] !== undefined ? (nextRow[config.rakeId] || '').toString().trim() : '';
     let hasSecondLoco = nextRakeId === '' && r + 1 <= endRow;
 
+    // Extract loco numbers
     const loco1 = row[config.loco] !== undefined ? (row[config.loco] || '').toString().trim() : '';
     const loco2 = hasSecondLoco ? (nextRow[config.loco] !== undefined ? (nextRow[config.loco] || '').toString().trim() : '') : '';
 
+    // Check for more than 2 loco numbers
     const allLocos = [loco1, loco2]
       .filter(Boolean)
       .join(',')
@@ -324,30 +351,26 @@ function extractRakeData(data, startRow, endRow, direction) {
       continue;
     }
 
+    // Get first non-empty value for fields that might have duplicates
     const getFirstValue = (col) => {
       let val = row[col] !== undefined ? row[col] : '';
-      if (col === config.isLoaded) {
-        console.log(`Raw isLoaded value for rake ${rakeId} (row ${r + 1}, direction ${direction}): "${val}"`);
-      }
       if (val !== '' && val !== null) return val;
 
       if (hasSecondLoco) {
         val = nextRow[col] !== undefined ? nextRow[col] : '';
-        if (col === config.isLoaded) {
-          console.log(`Raw isLoaded value for rake ${rakeId} (next row ${r + 2}, direction ${direction}): "${val}"`);
-        }
         if (val !== '' && val !== null) return val;
       }
 
       return null;
     };
 
+    // Create rake object
     const rake = {
       rakeId: rakeId,
       from: row[config.from] !== undefined ? (row[config.from] || '').toString().trim() : null,
       to: row[config.to] !== undefined ? (row[config.to] || '').toString().trim() : null,
       type: row[config.type] !== undefined ? (row[config.type] || '').toString().trim() : null,
-      isLoaded: getFirstValue(config.isLoaded), 
+      isLoaded: row[config.isLoaded] !== undefined ? (row[config.isLoaded] || '').toString().trim() : null,
       loco1: loco1 || null,
       loco2: loco2 || null,
       base: getFirstValue(config.base) ? (getFirstValue(config.base) || '').toString().trim() : null,
@@ -364,94 +387,90 @@ function extractRakeData(data, startRow, endRow, direction) {
     };
 
     rakes.push(rake);
+
+    // Move to next row
     r += hasSecondLoco ? 2 : 1;
   }
 
   return rakes;
 }
 
-function dedupeRakesById(rakes) {
-  const seen = new Set();
-  return rakes.filter(r => {
-    const id = r.rakeId?.trim();
-    if (!id || seen.has(id)) return false;
-    seen.add(id);
-    return true;
-  });
-}
 
+// Update database table
 async function updateRouteTable(tableName, rakes) {
   if (!rakes.length) return;
 
   try {
-    rakes = dedupeRakesById(rakes);
-    const { data: existingRows, error: fetchError } = await supabase
+    // 🚨 Clear the table before inserting new data
+    const { error: truncateError } = await supabase
       .from(tableName)
-      .select("rake_id");
-    if (fetchError) throw fetchError;
+      .delete()
+      .neq('rake_id', 0); // Delete all records (assuming 'id' exists)
 
-    const existingRakeIds = existingRows.map(r => r.rake_id);
-    const updates = [];
-    const inserts = [];
+    if (truncateError) throw truncateError;
 
-    rakes.forEach(rake => {
-      const rakeId = rake.rakeId?.trim();
-      if (!rakeId) return;
+    // Prepare data for insertion
+    const records = rakes.map(rake => ({
+      "rake_id": rake.rakeId ? rake.rakeId.trim() : null,
+      "from_station": rake.from,
+      "to_station": rake.to,
+      "type": rake.type,
+      "isloaded": rake.isLoaded,
+      "loco1": rake.loco1,
+      "loco2": rake.loco2,
+      "base": rake.base,
+      "due_date": rake.dueDate,
+      "wagon": rake.wagon ? parseInt(rake.wagon, 10) : null, // Ensure integer
+      "bpc_stn": rake.bpcStn,
+      "bpc_date": rake.bpcDate,
+      "bpc_type": rake.bpcType,
+      "arrival": rake.arrival,
+      "stts": rake.stts,
+      "loc": rake.loc,
+      "ic": rake.ic,
+      "fc": rake.fc
+    }));
 
-      const parsedWagon = rake.wagon ? parseInt(rake.wagon, 10) : null;
-      const record = {
-        rake_id: rakeId,
-        from_station: rake.from || null,
-        to_station: rake.to || null,
-        type: rake.type || null,
-        isloaded: rake.isLoaded || null,
-        loco1: rake.loco1 || null,
-        loco2: rake.loco2 || null,
-        base: rake.base || null,
-        due_date: rake.dueDate || null,
-        wagon: isNaN(parsedWagon) ? null : parsedWagon,
-        bpc_stn: rake.bpcStn || null,
-        bpc_date: rake.bpcDate || null,
-        bpc_type: rake.bpcType || null,
-        arrival: rake.arrival || null,
-        stts: rake.stts || null,
-        loc: rake.loc || null,
-        ic: rake.ic || null,
-        fc: rake.fc || null
-      };
+    function dedupeBatch(batch, key = "rake_id") {
+      const seen = new Set();
+      return batch.filter(item => {
+        if (seen.has(item[key])) return false;
+        seen.add(item[key]);
+        return true;
+      });
+    }
 
-      if (existingRakeIds.includes(rakeId)) {
-        updates.push(record);
-      } else {
-        inserts.push(record);
+    // Insert in batches (Supabase has a limit per request)
+    const BATCH_SIZE = 100;
+    let insertedCount = 0;
+
+    for (let i = 0; i < records.length; i += BATCH_SIZE) {
+      const batch = records.slice(i, i + BATCH_SIZE);
+      const uniqueBatch = dedupeBatch(batch);
+
+      const { data, error } = await supabase
+        .from(tableName)
+        .upsert(uniqueBatch, { onConflict: ['rake_id'] });
+
+      if (error) {
+        console.error(`Insert error for table ${tableName}:`, error.message, error.details || "");
       }
-    });
 
-    if (updates.length) {
-      const { error: upsertError } = await supabase
-        .from(tableName)
-        .upsert(updates, { onConflict: ["rake_id"] });
-      if (upsertError) console.error(`Upsert error for ${tableName}:`, upsertError);
+      insertedCount += batch.length;
     }
 
-    if (inserts.length) {
-      const { error: insertError } = await supabase
-        .from(tableName)
-        .insert(inserts);
-      if (insertError) console.error(`Insert error for ${tableName}:`, insertError);
-    }
 
-    return { updated: updates.length, inserted: inserts.length };
+    return insertedCount;
 
   } catch (error) {
-    console.error("Error updating table", tableName, error);
-    throw error;
   }
 }
 
 app.get("/health", (req, res) => {
   res.json({ status: "Server is running" });
 });
+
+
 
 async function startServer() {
   await connectDB();
