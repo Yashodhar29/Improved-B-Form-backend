@@ -130,6 +130,29 @@ const allowedTables = [
   "sc_tjsp", "tjsp_sc"
 ];
 
+app.get("/api/fetch-handing-over", async (req, res) => {
+  const tables = [
+    "wadi_sc", "wadi_gtl", "hg_ubl", "sc_ltrr", "pune_mrj", "dd_pune", "tjsp_sc"
+  ];
+
+  try {
+    const results = {};
+
+    for (const table of tables) {
+      const { data, error } = await supabase.from(table).select("*");
+      if (error) {
+        console.error(`Error fetching ${table}:`, error);
+        results[table] = { error: error.message };
+        continue; // skip this table but continue with others
+      }
+      results[table] = data;
+    }
+
+    res.json({ success: true, data: results });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
 
 app.get("/api/fetch-data", async (req, res) => {
   const tables = [
