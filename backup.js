@@ -91,34 +91,11 @@ function parseDateValue(value) {
     // Match dd/mm/yyyy or dd/mm/yy (optional time)
     const match = val.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})(?:\s+(\d{1,2}):(\d{2}))?$/);
     if (match) {
-      let [, dayStr, monthStr, yearStr, hourStr = '0', minStr = '0'] = match;
-      let day = parseInt(dayStr, 10);
-      let month = parseInt(monthStr, 10);
-      let year = parseInt(yearStr, 10);
-      if (year < 100) year += 2000;
-      let hour = parseInt(hourStr, 10);
-      let min = parseInt(minStr, 10);
-
-      // Try DD/MM/YYYY first
-      let date = new Date(Date.UTC(year, month - 1, day, hour, min));
-      if (!isNaN(date.getTime()) &&
-          date.getUTCDate() === day &&
-          date.getUTCMonth() === month - 1 &&
-          date.getUTCFullYear() === year) {
-        return date;
+      let [, d, m, y, h = 0, min = 0] = match;
+      if (y.length === 2) {
+        y = parseInt(y, 10) + 2000; // Assume 2000s for two-digit years
       }
-
-      // Try MM/DD/YYYY
-      let temp = day;
-      day = month;
-      month = temp;
-      date = new Date(Date.UTC(year, month - 1, day, hour, min));
-      if (!isNaN(date.getTime()) &&
-          date.getUTCDate() === day &&
-          date.getUTCMonth() === month - 1 &&
-          date.getUTCFullYear() === year) {
-        return date;
-      }
+      return new Date(Date.UTC(y, m - 1, d, h, min));
     }
   }
   return null;
@@ -242,7 +219,7 @@ async function processExcelData(data) {
     const normalizedRoute = normalizeRoute(route);
     if (!allowedTables.includes(normalizedRoute)) {
       console.warn(`Skipping unknown route: ${normalizedRoute} actual route is ${route}`);
-      continue;
+      return;
     }
 
     // New route block detected
@@ -485,7 +462,6 @@ async function updateRouteTable(tableName, rakes) {
     return insertedCount;
 
   } catch (error) {
-    console.error(`Error updating table ${tableName}:`, error);
   }
 }
 
