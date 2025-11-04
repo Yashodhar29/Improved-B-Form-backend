@@ -29,12 +29,13 @@ const upload = multer({
 app.use(cookieParser());
 app.use(
   cors({
-    origin: true,
+    origin: "https://enhanced-indian-railways-1.onrender.com",
     methods: ["GET", "POST"],
-    allowedHeaders: ["Content-Type"],
+    allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true
   })
 );
+
 const SECRET = "supersecret";
 
 app.use(express.json());
@@ -603,7 +604,7 @@ app.get("/api/dashboard-stats", async (req, res) => {
 });
 
 
-app.get("/api/get-user-and-role", async (req, res) => {
+app.get("/api/get-user-and-role", authenticateUser, async (req, res) => {
   try {
     // req.user should have been set by your authenticateUser middleware (from JWT)
     const userId = req.user.id;
