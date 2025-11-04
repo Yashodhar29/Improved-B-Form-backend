@@ -333,7 +333,19 @@ app.get("/api/wagon-totals", async (req, res) => {
   }
 });
 
-
+function authenticateUser(req, res, next) {
+  const token = req.cookies.token;
+  if (!token) {
+    return res.status(401).json({ message: "Not authenticated" });
+  }
+  try {
+    const decoded = jwt.verify(token, SECRET);
+    req.user = decoded; // { id, username, role }
+    next();
+  } catch (err) {
+    res.status(403).json({ message: "Invalid token" });
+  }
+}
 app.get("/api/ic-fc-stats", async (req, res) => {
   const tablePairs = [
     { src: "sc", dest: "wadi" },
