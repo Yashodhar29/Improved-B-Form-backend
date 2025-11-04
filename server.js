@@ -194,6 +194,70 @@ app.post("/api/login", async (req, res) => {
   }
 });
 
+app.get("/api/forecast-vs-actual", async (req, res) => {
+  try {
+    // Fetch data from forecast_data table
+    const { data: rows, error } = await supabase
+      .from("forecast_data")
+      .select("arrival, fc, ic")
+      .not("arrival", "is", null);
+
+    if (error) throw error;
+
+    // Initialize counters for each time period
+    const results = {
+      Morning: { forecasted: 0, actual: 0 },
+      Afternoon: { forecasted: 0, actual: 0 },
+      Evening: { forecasted: 0, actual: 0 },
+      Night: { forecasted: 0, actual: 0 }
+    };
+
+    // Group data by time period
+    rows.forEach(row => {
+      if (!row.arrival || typeof row.arrival !== "string") return;
+
+      const timeMatch = row.arrival.match(/^(\d{2}):(\d{2}):(\d{2})$/);
+      if (!timeMatch) return;
+
+      const hour = parseInt(timeMatch[1], 10);
+      let period;
+
+      if (hour >= 6 && hour <= 11) period = "Morning";
+      else if (hour >= 12 && hour <= 17) period = "Afternoon";
+      else if (hour >= 18 && hour <= 23) period = "Evening";
+      else period = "Night";
+
+      if (row.fc === "Y") results[period].forecasted++;
+      if (row.ic === "Y") results[period].actual++;
+    });
+
+    // Convert to chart-friendly format
+    const chartData = Object.entries(results).map(([period, counts]) => ({
+      period,
+      forecasted: counts.forecasted,
+      actual: counts.actual
+    }));
+
+    // Sort order: Morning → Afternoon → Evening → Night
+    chartData.sort(
+      (a, b) =>
+        ["Morning", "Afternoon", "Evening", "Night"].indexOf(a.period) -
+        ["Morning", "Afternoon", "Evening", "Night"].indexOf(b.period)
+    );
+
+    res.json({
+      success: true,
+      data: chartData
+    });
+  } catch (err) {
+    console.error("Error in /api/forecast-vs-actual:", err);
+    res.status(500).json({
+      success: false,
+      message: "Server error fetching forecast vs actual data"
+    });
+  }
+});
+
 app.get("/api/dashboard-stats", async (req, res) => {
   // Define all route sections (same as table names)
   const tables = [
