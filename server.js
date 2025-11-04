@@ -333,6 +333,117 @@ app.get("/api/wagon-totals", async (req, res) => {
   }
 });
 
+
+app.get("/api/ic-fc-stats", async (req, res) => {
+  const tablePairs = [
+    { src: "sc", dest: "wadi" },
+    { src: "gtl", dest: "wadi" },
+    { src: "ubl", dest: "hg" },
+    { src: "ltrr", dest: "sc" },
+    { src: "pune", dest: "dd" },
+    { src: "mrj", dest: "pune" },
+    { src: "sc", dest: "tjsp" }
+  ];
+
+  // Simple retry helper for transient Supabase connection issues
+  const retry = async (fn, retries = 3, delay = 1000) => {
+    for (let i = 0; i < retries; i++) {
+      try {
+        return await fn();
+      } catch (err) {
+        if (i === retries - 1) throw err;
+        console.warn(`Retry ${i + 1}/${retries} failed: ${err.message}`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  };
+
+  try {
+    console.time("Supabase ic-fc-stats query");
+
+    // Build route names for both directions
+    const routes = tablePairs.flatMap(pair => [
+      `${pair.src}_${pair.dest}`,
+      `${pair.dest}_${pair.src}`
+    ]);
+
+    // Fetch IC and FC stats for all routes
+    const { data, error } = await retry(async () => {
+      const result = await supabase
+        .from("ic_fc_stats_data")
+        .select("route, ic, fc")
+        .in("route", routes)
+        .range(0, 999); // limit 1000 rows
+      if (result.error) throw result.error;
+      return result;
+    });
+
+    console.timeEnd("Supabase ic-fc-stats query");
+
+    if (error) throw error;
+
+    console.log("Supabase raw data length:", data?.length || 0);
+    console.log("Supabase raw data sample:", data?.slice(0, 5));
+
+    // Initialize counts
+    const tableCounts = {};
+    routes.forEach(route => {
+      tableCounts[route] = { ic: 0, fc: 0 };
+    });
+
+    // Process rows
+    (data || []).forEach(row => {
+      if (tableCounts[row.route]) {
+        if (row.ic === "Y") tableCounts[row.route].ic++;
+        if (row.fc === "Y") tableCounts[row.route].fc++;
+      }
+    });
+
+    // Format final result
+    const results = tablePairs.map(pair => {
+      const forwardTable = `${pair.src}_${pair.dest}`;
+      const reverseTable = `${pair.dest}_${pair.src}`;
+      return {
+        pair: forwardTable,
+        directions: [
+          {
+            direction: "forward",
+            tableName: forwardTable,
+            IC: tableCounts[forwardTable].ic,
+            FC: tableCounts[forwardTable].fc
+          },
+          {
+            direction: "reverse",
+            tableName: reverseTable,
+            IC: tableCounts[reverseTable].ic,
+            FC: tableCounts[reverseTable].fc
+          }
+        ]
+      };
+    });
+
+    // Send structured response
+    res.json({
+      success: true,
+      data: results
+    });
+
+  } catch (err) {
+    console.error("Error in /api/ic-fc-stats:", {
+      message: err.message,
+      stack: err.stack || "No stack trace",
+      details: err.details || "No additional details",
+      code: err.code || "No code provided"
+    });
+
+    res.status(500).json({
+      success: false,
+      message: "Server error fetching IC/FC stats",
+      error: err.message
+    });
+  }
+});
+
 app.get("/api/ic-stats", async (req, res) => {
   // Simple retry utility
   const retry = async (fn, retries = 3, delay = 1000) => {
