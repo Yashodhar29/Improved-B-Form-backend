@@ -603,7 +603,7 @@ app.get("/api/dashboard-stats", async (req, res) => {
 });
 
 
-app.get("/api/get-user-and-role", authenticateUser, async (req, res) => {
+app.get("/api/get-user-and-role", async (req, res) => {
   try {
     // req.user should have been set by your authenticateUser middleware (from JWT)
     const userId = req.user.id;
