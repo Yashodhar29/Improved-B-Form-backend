@@ -194,6 +194,82 @@ app.post("/api/login", async (req, res) => {
   }
 });
 
+app.get("/api/dashboard-stats", async (req, res) => {
+  // Define all route sections (same as table names)
+  const tables = [
+    "sc_wadi", "wadi_sc", "gtl_wadi", "wadi_gtl", "ubl_hg", "hg_ubl",
+    "ltrr_sc", "sc_ltrr", "pune_dd", "dd_pune", "mrj_pune", "pune_mrj",
+    "sc_tjsp", "tjsp_sc"
+  ];
+
+  try {
+    const { data, error } = await supabase
+      .from("dashboard_stats_data")
+      .select("route, ic, fc");
+
+    if (error) {
+      console.error("Supabase fetch error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Error fetching dashboard data",
+        error: error.message,
+      });
+    }
+
+    if (!data || data.length === 0) {
+      return res.json({
+        success: true,
+        stats: { totalTrains: 0, totalInterchange: 0, totalForecast: 0 },
+        breakdown: tables.map((table) => ({ table, count: 0 })),
+      });
+    }
+
+    let totalICCount = 0;
+    let totalFCCount = 0;
+    let totalTrainCount = 0;
+
+    const perTableCounts = {};
+    tables.forEach((table) => (perTableCounts[table] = { count: 0 }));
+
+    for (const row of data) {
+      totalTrainCount++;
+
+      if (row.ic === "Y") {
+        totalICCount++;
+        if (perTableCounts[row.route]) perTableCounts[row.route].count++;
+      }
+
+      if (row.fc === "Y") {
+        totalFCCount++;
+      }
+    }
+
+    const breakdown = Object.entries(perTableCounts).map(([table, { count }]) => ({
+      table,
+      count,
+    }));
+
+    res.json({
+      success: true,
+      stats: {
+        totalTrains: totalTrainCount,
+        totalInterchange: totalICCount,
+        totalForecast: totalFCCount,
+      },
+      breakdown,
+    });
+
+  } catch (err) {
+    console.error("Error in /api/dashboard-stats:", err);
+    res.status(500).json({
+      success: false,
+      message: "Server error fetching dashboard statistics",
+      error: err.message,
+    });
+  }
+});
+
+
 app.get("/api/get-user-and-role", authenticateUser, async (req, res) => {
   try {
     // req.user should have been set by your authenticateUser middleware (from JWT)
