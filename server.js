@@ -130,6 +130,22 @@ const allowedTables = [
   "sc_tjsp", "tjsp_sc"
 ];
 
+app.post("/api/login", (req, res) => {
+  const { username, password } = req.body;
+
+  // Simple example – replace with real validation later
+  if (username === "admin" && password === "admin123") {
+    const token = jwt.sign({ username }, SECRET, { expiresIn: "2h" });
+
+    // Store token in a cookie
+    res.cookie("token", token, { httpOnly: true, sameSite: "lax" });
+    return res.json({ success: true, message: "Login successful" });
+  }
+
+  res.status(401).json({ success: false, message: "Invalid credentials" });
+});
+
+
 app.get("/api/fetch-handing-over", async (req, res) => {
   const tables = [
     "wadi_sc", "wadi_gtl", "hg_ubl", "sc_ltrr", "pune_mrj", "dd_pune", "tjsp_sc"
