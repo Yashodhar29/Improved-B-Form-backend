@@ -194,7 +194,37 @@ app.post("/api/login", async (req, res) => {
   }
 });
 
+app.get("/api/get-user-and-role", authenticateUser, async (req, res) => {
+  try {
+    // req.user should have been set by your authenticateUser middleware (from JWT)
+    const userId = req.user.id;
 
+    // Fetch fresh user data from Supabase (optional but more accurate)
+    const { data: userData, error } = await supabase
+      .from("users")
+      .select("username, role, designation, email, firstname, lastname")
+      .eq("id", userId)
+      .single();
+
+    if (error || !userData) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    // Respond with structured data
+    res.json({
+      success: true,
+      username: userData.username,
+      role: userData.role,
+      designation: userData.designation,
+      email: userData.email,
+      firstName: userData.firstname,
+      lastName: userData.lastname
+    });
+  } catch (err) {
+    console.error("Error fetching user:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
 
 app.get("/api/fetch-handing-over", async (req, res) => {
   const tables = [
