@@ -130,20 +130,70 @@ const allowedTables = [
   "sc_tjsp", "tjsp_sc"
 ];
 
-app.post("/api/login", (req, res) => {
-  const { username, password } = req.body;
+app.post("/api/login", async (req, res) => {
+  try {
+    const { username, password } = req.body;
 
-  // Simple example – replace with real validation later
-  if (username === "admin" && password === "admin123") {
-    const token = jwt.sign({ username }, SECRET, { expiresIn: "2h" });
+    if (!username || !password) {
+      return res.status(400).json({ success: false, message: "Username and password are required" });
+    }
+
+    // 🔹 Fetch user from Supabase users table
+    const { data: users, error } = await supabase
+      .from("users")
+      .select("*")
+      .eq("username", username)
+      .limit(1);
+
+    if (error) {
+      console.error("Supabase fetch error:", error);
+      return res.status(500).json({ success: false, message: "Database error while fetching user" });
+    }
+
+    if (!users || users.length === 0) {
+      return res.status(401).json({ success: false, message: "Invalid username" });
+    }
+
+    const user = users[0];
+
+    // ⚠️ Compare plain text passwords (for now)
+    // In future: store hashed passwords and use bcrypt.compare()
+    if (password !== user.password) {
+      return res.status(401).json({ success: false, message: "Invalid password" });
+    }
+
+    // ✅ Create a JWT token
+    const token = jwt.sign(
+      { id: user.id, username: user.username, role: user.role },
+      SECRET,
+      { expiresIn: "2h" }
+    );
 
     // Store token in a cookie
     res.cookie("token", token, { httpOnly: true, sameSite: "lax" });
-    return res.json({ success: true, message: "Login successful" });
-  }
 
-  res.status(401).json({ success: false, message: "Invalid credentials" });
+    // Send response
+    res.json({
+      success: true,
+      message: "Login successful",
+      user: {
+        id: user.id,
+        username: user.username,
+        firstname: user.firstname,
+        lastname: user.lastname,
+        email: user.email,
+        role: user.role,
+        designation: user.designation
+      },
+      token
+    });
+
+  } catch (err) {
+    console.error("Login error:", err);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
 });
+
 
 
 app.get("/api/fetch-handing-over", async (req, res) => {
