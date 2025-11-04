@@ -258,6 +258,78 @@ app.get("/api/forecast-vs-actual", async (req, res) => {
   }
 });
 
+
+app.get("/api/ic-stats", async (req, res) => {
+  // Simple retry utility
+  const retry = async (fn, retries = 3, delay = 1000) => {
+    for (let i = 0; i < retries; i++) {
+      try {
+        return await fn();
+      } catch (err) {
+        if (i === retries - 1) throw err;
+        console.warn(`Retry ${i + 1}/${retries} failed: ${err.message}`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  };
+
+  try {
+    console.time("Supabase ic-stats query");
+
+    // Fetch from Supabase table or view `ic_stats_data`
+    const { data, error } = await retry(async () => {
+      const result = await supabase
+        .from("ic_stats_data")
+        .select("ic")
+        .range(0, 999); // Limit to 1000 rows (adjust as needed)
+      if (result.error) throw result.error;
+      return result;
+    });
+
+    console.timeEnd("Supabase ic-stats query");
+
+    if (error) throw error;
+
+    console.log("Supabase raw data length:", data?.length || 0);
+    console.log("Supabase raw data sample:", data?.slice(0, 5));
+
+    // Initialize counts
+    let totalIC = 0;
+    let totalTrains = 0;
+
+    (data || []).forEach(row => {
+      totalTrains++;
+      if (row.ic === "Y") totalIC++;
+    });
+
+    // Prepare frontend chart data
+    const dataResponse = [
+      { name: "Interchanged Trains", value: totalIC },
+      { name: "Non-Interchanged Trains", value: totalTrains - totalIC }
+    ];
+
+    res.json({
+      success: true,
+      data: dataResponse
+    });
+  } catch (err) {
+    console.error("Error in /api/ic-stats:", {
+      message: err.message,
+      details: err.details || "No additional details",
+      hint: err.hint || "No hint provided",
+      code: err.code || "No code",
+      stack: err.stack || "No stack trace"
+    });
+
+    res.status(500).json({
+      success: false,
+      message: "Server error fetching IC stats",
+      error: err.message
+    });
+  }
+});
+
+
 app.get("/api/dashboard-stats", async (req, res) => {
   // Define all route sections (same as table names)
   const tables = [
