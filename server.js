@@ -259,6 +259,80 @@ app.get("/api/forecast-vs-actual", async (req, res) => {
 });
 
 
+app.get("/api/wagon-totals", async (req, res) => {
+  // Simple retry helper for transient errors
+  const retry = async (fn, retries = 3, delay = 1000) => {
+    for (let i = 0; i < retries; i++) {
+      try {
+        return await fn();
+      } catch (err) {
+        if (i === retries - 1) throw err;
+        console.warn(`Retry ${i + 1}/${retries} failed: ${err.message}`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  };
+
+  try {
+    console.time("Supabase wagon-totals query");
+
+    // Fetch from Supabase view/table `wagon_totals_data`
+    const { data, error } = await retry(async () => {
+      const result = await supabase
+        .from("wagon_totals_data")
+        .select("wagon, isloaded")
+        .range(0, 999); // limit 1000 rows
+      if (result.error) throw result.error;
+      return result;
+    });
+
+    console.timeEnd("Supabase wagon-totals query");
+
+    if (error) throw error;
+
+    console.log("Supabase raw data length:", data?.length || 0);
+    console.log("Supabase raw data sample:", data?.slice(0, 5));
+
+    // Initialize totals
+    let totalLoaded = 0;
+    let totalEmpty = 0;
+
+    // Process each row
+    (data || []).forEach(row => {
+      const wagons = Number(row.wagon) || 0;
+      if (row.isloaded === "L") {
+        totalLoaded += wagons;
+      } else if (row.isloaded === "E") {
+        totalEmpty += wagons;
+      }
+    });
+
+    // Prepare final response
+    const resultData = [
+      { name: "Loaded Wagons", value: totalLoaded },
+      { name: "Empty Wagons", value: totalEmpty }
+    ];
+
+    res.json({
+      success: true,
+      data: resultData
+    });
+  } catch (err) {
+    console.error("Error in /api/wagon-totals:", {
+      message: err.message,
+      stack: err.stack || "No stack trace",
+      details: err.details || "No additional details",
+      code: err.code || "No code provided"
+    });
+
+    res.status(500).json({
+      success: false,
+      message: "Server error fetching wagon totals",
+      error: err.message
+    });
+  }
+});
+
 app.get("/api/ic-stats", async (req, res) => {
   // Simple retry utility
   const retry = async (fn, retries = 3, delay = 1000) => {
